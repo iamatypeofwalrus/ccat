@@ -112,8 +112,7 @@ func stream(bucket string, key string, svc *s3manager.Downloader) error {
 	}
 
 	ctx := context.Background()
-	read, err := svc.DownloadWithContext(ctx, out, input)
-	fmt.Println("read this many bytes:", read)
+	_, err := svc.DownloadWithContext(ctx, out, input)
 
 	return err
 }

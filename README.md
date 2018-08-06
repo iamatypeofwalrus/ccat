@@ -1,5 +1,7 @@
-# ccat
-Cloud Cat: Cat objects from S3 to STDOUT
+# cloud cat
+Inspired by the [`cat` Unix command](https://en.wikipedia.org/wiki/Cat_(Unix)), cloud cat (`ccat`) can stream one or more objects from the Amazon Web Services (AWS) Simple Storage Service (S3) and print the results to STDOUT.
+
+Because cloud cat streams the objects, not downloads, you can work with large objects in S3 as if they're local without having to worry about the amount of space you have on your local disk.
 
 ## CLI Usage
 ```

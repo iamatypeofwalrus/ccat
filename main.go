@@ -17,7 +17,7 @@ import (
 
 const (
 	appName      = "ccat"
-	appUsage     = "Cloud cat\n\n A simple CLI that streams objects from S3 to STDOUT"
+	appUsage     = "cloud cat\n\n A simple CLI that streams objects from S3 to STDOUT"
 	appVersion   = "0.1.0"
 	appUsageText = "ccat s3://your-bucket/your-key https://s3-us-west-2.amazonaws.com/your-bucket/your-other-key"
 

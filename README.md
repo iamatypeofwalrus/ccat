@@ -6,7 +6,7 @@ Because cloud cat streams the objects, not downloads, you can work with large ob
 ## CLI Usage
 ```
 NAME:
-   ccat - Cloud cat
+   ccat - cloud cat
 
  A simple CLI that streams objects from S3 to STDOUT
 

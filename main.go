@@ -82,7 +82,7 @@ func do(c *cli.Context) error {
 
 	err := validateCredentials()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not find any valid credentials")
 	}
 
 	ctx := context.Background()

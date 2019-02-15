@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -49,36 +52,51 @@ func main() {
 			Name:  "help, h",
 			Usage: "show this help message",
 		},
+		cli.BoolFlag{
+			Name:  "verbose",
+			Usage: "log verbosely to stderr",
+		},
 	}
 
 	app.Action = do
 
 	err := app.Run(os.Args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "there was an error trying to stream objects: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func do(c *cli.Context) error {
-	if c.Bool("help") {
+	if c.Bool("help") || len(c.Args()) == 0 {
 		cli.ShowAppHelp(c)
 		return nil
 	}
 
-	ctx := context.Background()
-	streamObjectsFromS3(ctx, c.Args())
+	if c.Bool("verbose") {
+		// Logging to stderr since we're streaming the object to STDOUT
+		log.SetOutput(os.Stderr)
+	} else {
+		log.SetOutput(ioutil.Discard)
+	}
 
-	return nil
+	ctx := context.Background()
+
+	// TODO: consider validating credentials early and then bailing
+	return streamObjectsFromS3(ctx, c.Args())
 }
 
 func streamObjectsFromS3(ctx context.Context, objects []string) error {
 	for _, obj := range objects {
-		bucket, key := parseS3ObjectString(obj)
-		if bucket == "" || key == "" {
-			return fmt.Errorf("could not parse %v into bucket and key", obj)
+		bucket, key, err := parseS3ObjectString(obj)
+		if err != nil {
+			return fmt.Errorf("could not parse %v into bucket and key: %v", obj, err)
 		}
-		err := streamObjectFromS3(ctx, bucket, key)
+
+		log.Println("bucket:", bucket)
+		log.Println("key:", key)
+
+		err = streamObjectFromS3(ctx, bucket, key)
 		if err != nil {
 			return err
 		}
@@ -89,7 +107,11 @@ func streamObjectsFromS3(ctx context.Context, objects []string) error {
 
 func streamObjectFromS3(ctx context.Context, bucket string, key string) error {
 	// figure out which region the bucket is in
+	log.Println("getting bucket region")
 	sess := session.Must(session.NewSession())
+
+	// TODO: consider caching the region for a bucket in memory
+	// TODO: the HTTP URLS have the region built in and we could pass the hint down here
 	region, err := s3manager.GetBucketRegion(ctx, sess, bucket, "us-east-1")
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "NotFound" {
@@ -98,6 +120,8 @@ func streamObjectFromS3(ctx context.Context, bucket string, key string) error {
 		return err
 	}
 
+	// TODO: consider caching sessions
+	log.Println("creating session for", region)
 	streamSess := session.Must(
 		session.NewSession(
 			&aws.Config{Region: aws.String(region)},
@@ -108,6 +132,7 @@ func streamObjectFromS3(ctx context.Context, bucket string, key string) error {
 		// Force the downloader to stream the object sequentially
 		d.Concurrency = 1
 	})
+	log.Printf("streaming %s/%s\n", bucket, key)
 	return stream(bucket, key, svc)
 }
 
@@ -126,31 +151,34 @@ func stream(bucket string, key string, svc *s3manager.Downloader) error {
 // parseS3ObjectString can parse definitions of the form s3://bucket/key
 // and https://s3-us-west-2.amazonaws.com/bucket/key
 // into bucket and key.
-func parseS3ObjectString(obj string) (string, string) {
+func parseS3ObjectString(obj string) (string, string, error) {
 	if strings.HasPrefix(obj, prefixS3) {
 		return parseS3Key(obj)
-	} else if strings.HasPrefix(obj, prefixHTTPS) {
-		return parseHTTPKey(obj)
 	}
-
-	return "", ""
+	return parseHTTPKey(obj)
 }
 
-func parseS3Key(obj string) (string, string) {
+func parseS3Key(obj string) (string, string, error) {
 	str := strings.Replace(obj, prefixS3, "", 1)
 	split := strings.SplitN(str, "/", 2)
 	if len(split) != 2 {
-		return "", ""
+		return "", "", fmt.Errorf("could not parse s3 key: %s", obj)
 	}
 
-	return split[0], split[1]
+	return split[0], split[1], nil
 }
 
-func parseHTTPKey(obj string) (string, string) {
+func parseHTTPKey(obj string) (string, string, error) {
 	str := strings.Replace(obj, prefixHTTPS, "", 1)
-	split := strings.SplitN(str, "/", 3)
-	if len(split) != 3 {
-		return "", ""
+	escaped, err := url.PathUnescape(str)
+	if err != nil {
+		return "", "", fmt.Errorf("could not unescape url: %s", obj)
 	}
-	return split[1], split[2]
+
+	split := strings.SplitN(escaped, "/", 3)
+	if len(split) != 3 {
+		return "", "", fmt.Errorf("could not parse http s3 key: %s", obj)
+	}
+
+	return split[1], split[2], nil
 }

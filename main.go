@@ -80,9 +80,12 @@ func do(c *cli.Context) error {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	ctx := context.Background()
+	err := validateCredentials()
+	if err != nil {
+		return err
+	}
 
-	// TODO: consider validating credentials early and then bailing
+	ctx := context.Background()
 	return streamObjectsFromS3(ctx, c.Args())
 }
 
@@ -181,4 +184,11 @@ func parseHTTPKey(obj string) (string, string, error) {
 	}
 
 	return split[1], split[2], nil
+}
+
+func validateCredentials() error {
+	sess := session.Must(session.NewSession())
+	creds := sess.Config.Credentials
+	_, err := creds.Get()
+	return err
 }

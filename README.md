@@ -1,3 +1,5 @@
+[![Build Status](https://codebuild.us-west-2.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoiQ09OKzJybUl1b21jMnBFbDczVGtYQmlmalFkczl6MlphTmNlM1BFQS85OGRFMDdXOWNYT2hibGtyUjhOQXBBVnZJN3ZUdXo5RjdtdFVRdlY2UnRHMEZ3PSIsIml2UGFyYW1ldGVyU3BlYyI6ImRTd25EZ0lOWnNBQVVMVEciLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=master)](https://codebuild.us-west-2.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoiQ09OKzJybUl1b21jMnBFbDczVGtYQmlmalFkczl6MlphTmNlM1BFQS85OGRFMDdXOWNYT2hibGtyUjhOQXBBVnZJN3ZUdXo5RjdtdFVRdlY2UnRHMEZ3PSIsIml2UGFyYW1ldGVyU3BlYyI6ImRTd25EZ0lOWnNBQVVMVEciLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=master)
+
 # cloud cat
 Inspired by the [`cat` Unix command](https://en.wikipedia.org/wiki/Cat_(Unix)), cloud cat (`ccat`) can stream one or more objects from the Amazon Web Services (AWS) Simple Storage Service (S3) and print the results to STDOUT.
 

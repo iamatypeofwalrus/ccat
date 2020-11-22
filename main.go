@@ -22,7 +22,7 @@ const (
 	appName      = "ccat"
 	appUsage     = "cloud cat\n\n Stream objects from S3 to STDOUT"
 	appVersion   = "0.1.0"
-	appUsageText = "ccat s3://your-bucket/your-key https://s3-us-west-2.amazonaws.com/your-bucket/your-other-key"
+	appUsageText = "ccat s3://your-bucket/your-key https://s3-us-west-2.amazonaws.com/your-bucket/your-other-key\n   ccat s3://your-bucket/your-prefix/"
 
 	prefixS3    = "s3://"
 	prefixHTTPS = "https://"
@@ -103,29 +103,71 @@ func streamObjectsFromS3(ctx context.Context, profile string, objects []string) 
 		}
 
 		log.Println("bucket:", bucket)
-		log.Println("key:", key)
 
-		err = streamObjectFromS3(ctx, profile, bucket, key)
-		if err != nil {
-			return err
+		var logKey string
+		if key == "" {
+			logKey = "<empty>"
+		} else {
+			logKey = key
+		}
+		log.Println("key:", logKey)
+
+		var streamErr error
+		if strings.HasSuffix(key, "/") || key == "" {
+			streamErr = findAllObjectsForPrefixAndStream(ctx, profile, bucket, key)
+		} else {
+			streamErr = streamSingleObjectFromS3(ctx, profile, bucket, key)
+		}
+
+		if streamErr != nil {
+			return streamErr
 		}
 	}
 
 	return nil
 }
 
-func streamObjectFromS3(ctx context.Context, profile string, bucket string, key string) error {
-	// figure out which region the bucket is in
-	log.Println("getting bucket region")
-	sess := newSession(profile, "")
-
-	// TODO: consider caching the region for a bucket in memory
-	// TODO: the HTTP URLS have the region built in and we could pass the hint down here
-	region, err := s3manager.GetBucketRegion(ctx, sess, bucket, "us-east-1")
+func findAllObjectsForPrefixAndStream(ctx context.Context, profile string, bucket string, prefix string) error {
+	region, err := findRegionForBucket(ctx, profile, bucket)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "NotFound" {
-			fmt.Fprintf(os.Stderr, "unable to find bucket %s's region not found\n", bucket)
-		}
+		return err
+	}
+
+	sess := newSession(profile, region)
+	s3client := s3.New(sess)
+
+	query := &s3.ListObjectsV2Input{}
+	query.SetBucket(bucket)
+
+	if prefix != "" {
+		query.SetPrefix(prefix)
+	}
+
+	pageNum := 0
+	downloader := newS3Downloader(sess)
+
+	return s3client.ListObjectsV2PagesWithContext(ctx, query,
+		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+			pageNum++
+			numObjectsOnPage := len(page.Contents)
+			log.Printf("found %d objects on page %d", numObjectsOnPage, pageNum)
+
+			for _, obj := range page.Contents {
+				stream(
+					bucket,
+					*obj.Key,
+					downloader,
+				)
+			}
+
+			return true
+		},
+	)
+}
+
+func streamSingleObjectFromS3(ctx context.Context, profile string, bucket string, key string) error {
+	region, err := findRegionForBucket(ctx, profile, bucket)
+	if err != nil {
 		return err
 	}
 
@@ -133,10 +175,7 @@ func streamObjectFromS3(ctx context.Context, profile string, bucket string, key 
 	log.Println("creating session for", region)
 	streamSess := newSession(profile, region)
 
-	svc := s3manager.NewDownloader(streamSess, func(d *s3manager.Downloader) {
-		// Force the downloader to stream the object sequentially
-		d.Concurrency = 1
-	})
+	svc := newS3Downloader(streamSess)
 	log.Printf("streaming %s/%s\n", bucket, key)
 	return stream(bucket, key, svc)
 }
@@ -151,6 +190,30 @@ func stream(bucket string, key string, svc *s3manager.Downloader) error {
 	_, err := svc.DownloadWithContext(ctx, Stdout, input)
 
 	return err
+}
+
+func findRegionForBucket(ctx context.Context, profile string, bucket string) (string, error) {
+	sess := newSession(profile, "")
+
+	// TODO: consider caching the region for a bucket in memory
+	// TODO: the HTTP URLS have the region built in and we could pass the hint down here
+	region, err := s3manager.GetBucketRegion(ctx, sess, bucket, "us-east-1")
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "NotFound" {
+			fmt.Fprintf(os.Stderr, "unable to find bucket %s's region not found\n", bucket)
+		}
+		return "", err
+	}
+
+	log.Printf("bucket %s is in region %s\n", bucket, region)
+	return region, nil
+}
+
+func newS3Downloader(sess *session.Session) *s3manager.Downloader {
+	return s3manager.NewDownloader(sess, func(d *s3manager.Downloader) {
+		// Force the downloader to stream the object sequentially
+		d.Concurrency = 1
+	})
 }
 
 // parseS3ObjectString can parse definitions of the form s3://bucket/key
@@ -198,6 +261,7 @@ func validateCredentials(profile string) error {
 func newSession(profile string, region string) *session.Session {
 	config := aws.NewConfig()
 	if region != "" {
+		log.Println("setting aws region to", region)
 		config.Region = aws.String(region)
 	}
 
@@ -206,10 +270,12 @@ func newSession(profile string, region string) *session.Session {
 	}
 
 	if profile != "" {
+		log.Println("setting aws profile to", profile)
 		opts.Profile = profile
 	}
 
 	if region == "" {
+		log.Println("setting aws sdk to use config file")
 		opts.SharedConfigState = session.SharedConfigEnable
 	}
 

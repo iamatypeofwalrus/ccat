@@ -40,3 +40,8 @@ ccat s3://your-bucket/your-key.json s3://your-bucket/your-other-key.json
 ```
 ccat s3://your-bucket/your-key.json.gz | zcat
 ```
+
+### Print all objects under a prefix to STDOUT
+```
+ccat s3://your-bucket/your-prefix/
+```

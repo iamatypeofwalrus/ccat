@@ -117,13 +117,7 @@ func streamObjectsFromS3(ctx context.Context, profile string, objects []string) 
 func streamObjectFromS3(ctx context.Context, profile string, bucket string, key string) error {
 	// figure out which region the bucket is in
 	log.Println("getting bucket region")
-	sess := session.Must(
-		session.NewSessionWithOptions(
-			session.Options{
-				Profile: profile,
-			},
-		),
-	)
+	sess := newSession(profile, "")
 
 	// TODO: consider caching the region for a bucket in memory
 	// TODO: the HTTP URLS have the region built in and we could pass the hint down here
@@ -137,11 +131,7 @@ func streamObjectFromS3(ctx context.Context, profile string, bucket string, key 
 
 	// TODO: consider caching sessions
 	log.Println("creating session for", region)
-	streamSess := session.Must(
-		session.NewSession(
-			&aws.Config{Region: aws.String(region)},
-		),
-	)
+	streamSess := newSession(profile, region)
 
 	svc := s3manager.NewDownloader(streamSess, func(d *s3manager.Downloader) {
 		// Force the downloader to stream the object sequentially
@@ -199,14 +189,31 @@ func parseHTTPKey(obj string) (string, string, error) {
 }
 
 func validateCredentials(profile string) error {
-	sess := session.Must(
-		session.NewSessionWithOptions(
-			session.Options{
-				Profile: profile,
-			},
-		),
-	)
+	sess := newSession(profile, "")
 	creds := sess.Config.Credentials
 	_, err := creds.Get()
 	return err
+}
+
+func newSession(profile string, region string) *session.Session {
+	config := aws.NewConfig()
+	if region != "" {
+		config.Region = aws.String(region)
+	}
+
+	opts := session.Options{
+		Config: *config,
+	}
+
+	if profile != "" {
+		opts.Profile = profile
+	}
+
+	if region == "" {
+		opts.SharedConfigState = session.SharedConfigEnable
+	}
+
+	return session.Must(
+		session.NewSessionWithOptions(opts),
+	)
 }

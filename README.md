@@ -10,13 +10,15 @@ Because cloud cat streams the objects, not downloads, you can work with large ob
 NAME:
    ccat - cloud cat
 
- A simple CLI that streams objects from S3 to STDOUT
+ Stream objects from S3 to STDOUT
 
 USAGE:
    ccat s3://your-bucket/your-key https://s3-us-west-2.amazonaws.com/your-bucket/your-other-key
 
 GLOBAL OPTIONS:
-   --help, -h  show this help message
+   --profile value, -p value  AWS Profile to use when creating clients
+   --help, -h                 show this help message
+   --verbose                  log verbosely to stderr
 ```
 ## Examples
 ### Print an object to STDOUT

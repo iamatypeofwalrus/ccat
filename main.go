@@ -20,7 +20,7 @@ import (
 
 const (
 	appName      = "ccat"
-	appUsage     = "cloud cat\n\n A simple CLI that streams objects from S3 to STDOUT"
+	appUsage     = "cloud cat\n\n Stream objects from S3 to STDOUT"
 	appVersion   = "0.1.0"
 	appUsageText = "ccat s3://your-bucket/your-key https://s3-us-west-2.amazonaws.com/your-bucket/your-other-key"
 
@@ -44,10 +44,14 @@ func main() {
 
 	// TODO:
 	// * add bytes range
-	// * handle "*" prefix and stream multiple objects sequentially
+	// * any object that ends in "/" assumes you want to stream the whole folder to STDOUT
 	// * add a bytes flag for max number of bytes to scan
 	// * add a max number of objects flag. bytes or max which ever comes first
 	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "profile, p",
+			Usage: "AWS credentials profile",
+		},
 		cli.BoolFlag{
 			Name:  "help, h",
 			Usage: "show this help message",
@@ -80,16 +84,18 @@ func do(c *cli.Context) error {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	err := validateCredentials()
+	profile := c.String("profile")
+
+	err := validateCredentials(profile)
 	if err != nil {
 		return fmt.Errorf("could not find any valid credentials")
 	}
 
 	ctx := context.Background()
-	return streamObjectsFromS3(ctx, c.Args())
+	return streamObjectsFromS3(ctx, profile, c.Args())
 }
 
-func streamObjectsFromS3(ctx context.Context, objects []string) error {
+func streamObjectsFromS3(ctx context.Context, profile string, objects []string) error {
 	for _, obj := range objects {
 		bucket, key, err := parseS3ObjectString(obj)
 		if err != nil {
@@ -99,7 +105,7 @@ func streamObjectsFromS3(ctx context.Context, objects []string) error {
 		log.Println("bucket:", bucket)
 		log.Println("key:", key)
 
-		err = streamObjectFromS3(ctx, bucket, key)
+		err = streamObjectFromS3(ctx, profile, bucket, key)
 		if err != nil {
 			return err
 		}
@@ -108,10 +114,16 @@ func streamObjectsFromS3(ctx context.Context, objects []string) error {
 	return nil
 }
 
-func streamObjectFromS3(ctx context.Context, bucket string, key string) error {
+func streamObjectFromS3(ctx context.Context, profile string, bucket string, key string) error {
 	// figure out which region the bucket is in
 	log.Println("getting bucket region")
-	sess := session.Must(session.NewSession())
+	sess := session.Must(
+		session.NewSessionWithOptions(
+			session.Options{
+				Profile: profile,
+			},
+		),
+	)
 
 	// TODO: consider caching the region for a bucket in memory
 	// TODO: the HTTP URLS have the region built in and we could pass the hint down here
@@ -186,8 +198,14 @@ func parseHTTPKey(obj string) (string, string, error) {
 	return split[1], split[2], nil
 }
 
-func validateCredentials() error {
-	sess := session.Must(session.NewSession())
+func validateCredentials(profile string) error {
+	sess := session.Must(
+		session.NewSessionWithOptions(
+			session.Options{
+				Profile: profile,
+			},
+		),
+	)
 	creds := sess.Config.Credentials
 	_, err := creds.Get()
 	return err
